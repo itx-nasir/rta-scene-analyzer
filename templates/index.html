@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Upload Section -->
+    <div class="card-shadow bg-white rounded-lg p-8 mb-8">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">
+            <i class="fas fa-upload mr-2"></i>Upload or Capture Image
+        </h2>
+        
+        <!-- File Upload -->
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Upload Image File</label>
+            <div class="flex items-center justify-center w-full">
+                <label for="imageFile" class="flex flex-col items-center justify-center w-full h-32 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100">
+                    <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                        <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                        <p class="mb-2 text-sm text-gray-500"><span class="font-semibold">Click to upload</span> or drag and drop</p>
+                        <p class="text-xs text-gray-500">PNG, JPG, JPEG (MAX. 10MB)</p>
+                    </div>
+                    <input id="imageFile" type="file" class="hidden" accept="image/*" />
+                </label>
+            </div>
+        </div>
+
+        <!-- Webcam Capture -->
+        <div class="mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Or Capture from Webcam</label>
+            <div class="flex flex-col items-center space-y-4">
+                <video id="webcam" class="hidden w-full max-w-md border rounded-lg"></video>
+                <canvas id="canvas" class="hidden"></canvas>
+                <div class="flex space-x-4">
+                    <button id="startWebcam" class="btn-primary text-white px-6 py-2 rounded-lg font-medium">
+                        <i class="fas fa-camera mr-2"></i>Start Webcam
+                    </button>
+                    <button id="capturePhoto" class="hidden bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium">
+                        <i class="fas fa-camera-retro mr-2"></i>Capture Photo
+                    </button>
+                    <button id="stopWebcam" class="hidden bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium">
+                        <i class="fas fa-stop mr-2"></i>Stop Webcam
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Selected Image Preview -->
+        <div id="imagePreview" class="hidden mb-6">
+            <label class="block text-sm font-medium text-gray-700 mb-2">Selected Image</label>
+            <img id="previewImg" class="w-full max-w-md mx-auto border rounded-lg" />
+        </div>
+
+        <!-- Analyze Button -->
+        <div class="text-center">
+            <button id="analyzeBtn" class="btn-primary text-white px-8 py-3 rounded-lg font-medium text-lg disabled:opacity-50 disabled:cursor-not-allowed" disabled>
+                <i class="fas fa-search mr-2"></i>Analyze Scene
+            </button>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="loading items-center justify-center mt-6">
+            <div class="flex items-center space-x-2">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <span class="text-gray-600">Analyzing image...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div id="results" class="result-card card-shadow bg-white rounded-lg p-8 hidden">
+        <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">
+            <i class="fas fa-chart-line mr-2"></i>Analysis Results
+        </h2>
+        
+        <!-- Processed Image -->
+        <div class="mb-6">
+            <h3 class="text-lg font-semibold text-gray-700 mb-3">Processed Image (with Bounding Boxes)</h3>
+            <div class="text-center">
+                <img id="processedImage" class="max-w-full h-auto border rounded-lg mx-auto" />
+            </div>
+        </div>
+
+        <!-- Scene Description -->
+        <div class="mb-6">
+            <h3 class="text-lg font-semibold text-gray-700 mb-3">Scene Description</h3>
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4 rounded">
+                <p id="sceneDescription" class="text-gray-700 leading-relaxed"></p>
+            </div>
+        </div>
+
+        <!-- Detection Details -->
+        <div class="grid md:grid-cols-2 gap-6">
+            <!-- Scene Classification -->
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">
+                    <i class="fas fa-map-marker-alt mr-2"></i>Scene Classification
+                </h3>
+                <div class="bg-white p-3 rounded border">
+                    <span id="sceneClass" class="text-lg font-medium text-blue-600"></span>
+                </div>
+            </div>
+
+            <!-- Detected Objects -->
+            <div class="bg-gray-50 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold text-gray-700 mb-3">
+                    <i class="fas fa-list mr-2"></i>Detected Objects
+                </h3>
+                <div id="objectsList" class="space-y-2"></div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let selectedFile = null;
+    let stream = null;
+
+    // File upload handling
+    document.getElementById('imageFile').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            selectedFile = file;
+            showImagePreview(file);
+            enableAnalyzeButton();
+        }
+    });
+
+    // Webcam handling
+    document.getElementById('startWebcam').addEventListener('click', async function() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+            const video = document.getElementById('webcam');
+            video.srcObject = stream;
+            video.play();
+            
+            video.classList.remove('hidden');
+            document.getElementById('capturePhoto').classList.remove('hidden');
+            document.getElementById('stopWebcam').classList.remove('hidden');
+            this.classList.add('hidden');
+        } catch (err) {
+            alert('Error accessing webcam: ' + err.message);
+        }
+    });
+
+    document.getElementById('capturePhoto').addEventListener('click', function() {
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        
+        canvas.toBlob(function(blob) {
+            selectedFile = new File([blob], 'webcam-capture.jpg', { type: 'image/jpeg' });
+            showImagePreview(selectedFile);
+            enableAnalyzeButton();
+            stopWebcam();
+        }, 'image/jpeg', 0.8);
+    });
+
+    document.getElementById('stopWebcam').addEventListener('click', stopWebcam);
+
+    function stopWebcam() {
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            stream = null;
+        }
+        document.getElementById('webcam').classList.add('hidden');
+        document.getElementById('capturePhoto').classList.add('hidden');
+        document.getElementById('stopWebcam').classList.add('hidden');
+        document.getElementById('startWebcam').classList.remove('hidden');
+    }
+
+    function showImagePreview(file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('previewImg').src = e.target.result;
+            document.getElementById('imagePreview').classList.remove('hidden');
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function enableAnalyzeButton() {
+        document.getElementById('analyzeBtn').disabled = false;
+    }
+
+    // Analyze button handling
+    document.getElementById('analyzeBtn').addEventListener('click', async function() {
+        if (!selectedFile) {
+            alert('Please select an image first');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+
+        // Show loading
+        document.getElementById('loading').classList.add('active');
+        document.getElementById('results').classList.add('hidden');
+        this.disabled = true;
+
+        try {
+            const response = await axios.post('/analyze', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
+            const data = response.data;
+            
+            // Show processed image
+            document.getElementById('processedImage').src = '/static/processed/' + data.processed_image;
+            
+            // Show scene description
+            document.getElementById('sceneDescription').textContent = data.scene_description;
+            
+            // Show scene class
+            document.getElementById('sceneClass').textContent = data.scene_class;
+            
+            // Show detected objects
+            const objectsList = document.getElementById('objectsList');
+            objectsList.innerHTML = '';
+            data.objects_detected.forEach(obj => {
+                const objDiv = document.createElement('div');
+                objDiv.className = 'bg-white p-2 rounded border flex justify-between items-center';
+                objDiv.innerHTML = `
+                    <span class="font-medium">${obj.label}</span>
+                    <span class="text-sm text-gray-500">${(obj.confidence * 100).toFixed(1)}%</span>
+                `;
+                objectsList.appendChild(objDiv);
+            });
+
+            // Show results
+            document.getElementById('results').classList.remove('hidden');
+            setTimeout(() => {
+                document.getElementById('results').classList.add('show');
+            }, 100);
+
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Error analyzing image. Please try again.');
+        } finally {
+            document.getElementById('loading').classList.remove('active');
+            this.disabled = false;
+        }
+    });
+
+    // Drag and drop functionality
+    const uploadArea = document.querySelector('label[for="imageFile"]');
+    
+    uploadArea.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        this.classList.add('bg-gray-100');
+    });
+    
+    uploadArea.addEventListener('dragleave', function(e) {
+        e.preventDefault();
+        this.classList.remove('bg-gray-100');
+    });
+    
+    uploadArea.addEventListener('drop', function(e) {
+        e.preventDefault();
+        this.classList.remove('bg-gray-100');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            const file = files[0];
+            if (file.type.startsWith('image/')) {
+                selectedFile = file;
+                showImagePreview(file);
+                enableAnalyzeButton();
+            }
+        }
+    });
+</script>
+{% endblock %}

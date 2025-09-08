@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+aiofiles
+ultralytics
+torch
+torchvision
+opencv-python
+pillow
+numpy
+requests

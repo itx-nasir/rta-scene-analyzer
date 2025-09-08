@@ -1,0 +1,103 @@
+import torch
+import torchvision.transforms as transforms
+from torchvision import models
+from ultralytics import YOLO
+import cv2
+import numpy as np
+from PIL import Image
+import os
+import uuid
+import requests
+
+# -------------------
+# Load YOLOv8 (Object Detection)
+# -------------------
+yolo_model = YOLO("yolov8n.pt")  # Nano version (fast). Change to yolov8m.pt for higher accuracy.
+
+def predict_objects(image_bytes, model):
+    """Predict objects and draw bounding boxes, return processed image path and detections"""
+    # Convert bytes to OpenCV image
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    
+    # Run YOLO
+    results = model(img)
+    detections = []
+    
+    # Draw bounding boxes
+    for r in results[0].boxes.data.tolist():
+        x1, y1, x2, y2, score, cls = r
+        x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+        
+        # Add detection to list
+        detections.append({
+            "label": model.names[int(cls)],
+            "confidence": round(float(score), 3),
+            "bbox": [x1, y1, x2, y2]
+        })
+        
+        # Draw bounding box
+        cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+        
+        # Add label with confidence
+        label = f"{model.names[int(cls)]}: {score:.2f}"
+        label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)[0]
+        cv2.rectangle(img, (x1, y1 - label_size[1] - 10), (x1 + label_size[0], y1), (0, 255, 0), -1)
+        cv2.putText(img, label, (x1, y1 - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 2)
+    
+    # Save processed image
+    processed_filename = f"processed_{uuid.uuid4().hex[:8]}.jpg"
+    processed_path = f"static/processed/{processed_filename}"
+    cv2.imwrite(processed_path, img)
+    
+    return detections, processed_filename
+
+
+# -------------------
+# Load Places365 (Scene Classification)
+# -------------------
+scene_model_file = "resnet18_places365.pth.tar"
+scene_classes_file = "categories_places365.txt"
+
+# Download model weights if not found
+if not os.path.exists(scene_model_file):
+    print("Downloading Places365 model...")
+    import urllib.request
+    url = "http://places2.csail.mit.edu/models_places365/resnet18_places365.pth.tar"
+    urllib.request.urlretrieve(url, scene_model_file)
+
+if not os.path.exists(scene_classes_file):
+    print("Downloading Places365 categories...")
+    import urllib.request
+    url = "https://raw.githubusercontent.com/csailvision/places365/master/categories_places365.txt"
+    urllib.request.urlretrieve(url, scene_classes_file)
+
+# Load categories
+with open(scene_classes_file) as f:
+    scene_classes = [line.strip().split(" ")[0][3:] for line in f]
+
+# Load model
+scene_model = models.resnet18(num_classes=365)
+checkpoint = torch.load(scene_model_file, map_location=torch.device("cpu"))
+state_dict = {k.replace("module.", ""): v for k, v in checkpoint["state_dict"].items()}
+scene_model.load_state_dict(state_dict)
+scene_model.eval()
+
+# Transform
+scene_tf = transforms.Compose([
+    transforms.Resize((224,224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225])
+])
+
+def predict_scene(image_bytes, model, classes):
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+    tensor = scene_tf(Image.fromarray(img_rgb)).unsqueeze(0)
+    with torch.no_grad():
+        logits = model(tensor)
+    pred = torch.argmax(logits, 1).item()
+
+    return classes[pred]
