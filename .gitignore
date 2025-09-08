@@ -1,1 +1,32 @@
+# Python
 venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project specific
+static/uploads/*
+static/processed/*
+!static/uploads/.gitkeep
+!static/processed/.gitkeep
+
+# Models (these are auto-downloaded)
+yolov8n.pt
+resnet18_places365.pth.tar
+categories_places365.txt
+
+# Logs
+*.log

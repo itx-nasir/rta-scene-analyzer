@@ -10,3 +10,5 @@ opencv-python
 pillow
 numpy
 requests
+transformers
+sentencepiece
